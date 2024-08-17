@@ -24,6 +24,7 @@ class OrderSchema(ma.Schema):
     id = fields.Integer(required=True)
     date = fields.Date(required=True)
     customer_id = fields.Integer(required=True)
+    products = fields.List(fields.Nested(ProductSchema))
 
 class AccountSchema(ma.Schema):
     id = fields.Integer(required=True)
@@ -53,17 +54,6 @@ class Customer(db.Model):
     email = db.Column(db.String(320))
     phone = db.Column(db.String(15))
 
-class Product(db.Model):
-    __tablename__ = 'Products'
-    id = db.Column(db.Integer, primary_key = True)
-    name = db.Column(db.String(255), nullable = False)
-    price = db.Column(db.Float, nullable = False)
-
-class Order(db.Model):
-    __tablename__ = 'Orders'
-    id = db.Column(db.Integer, primary_key = True)
-    date = db.Column(db.Date, nullable = False)
-    customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'))
 
 class CustomerAccount(db.Model):
     __tablename__ = 'Customer_Accounts'
@@ -71,6 +61,20 @@ class CustomerAccount(db.Model):
     username = db.Column(db.String(255), unique = True, nullable = False)
     password = db.Column(db.String(255), nullable = False)
     customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'))
+
+
+class Order(db.Model):
+    __tablename__ = 'Orders'
+    id = db.Column(db.Integer, primary_key = True)
+    date = db.Column(db.Date, nullable = False)
+    customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'))
+
+class Product(db.Model):
+    __tablename__ = 'Products'
+    id = db.Column(db.Integer, primary_key = True)
+    name = db.Column(db.String(255), nullable = False)
+    price = db.Column(db.Float, nullable = False)
+
 
 # Routes
 # Customer Routes ---------------------------------------------------------------------------
@@ -210,6 +214,12 @@ def delete_product(id):
     db.session.delete(product)
     db.session.commit()
     return jsonify({"message": "Product removed successfully"}), 200
+
+#Order Routes ---------------------------------------------------------------
+
+#need to schedule time to work on this.
+
+
 
 
 with app.app_context():
