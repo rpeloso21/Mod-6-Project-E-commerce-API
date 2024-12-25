@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from marshmallow import fields
 from marshmallow import ValidationError
+from sqlalchemy import select, delete
 
 app = Flask(__name__)
 CORS(app)
@@ -18,16 +19,15 @@ class CustomerSchema(ma.Schema):
     phone = fields.String(required=True)
 
 class ProductSchema(ma.Schema):
-    id = fields.Integer(required=True)
+    id = fields.Integer(required=False)
     name = fields.String(required=True)
     price = fields.Float(required=True)
-    orders = fields.List(fields.Nested(lambda:OrderSchema(only=("id", "date"))))
 
 class OrderSchema(ma.Schema):
-    id = fields.Integer()
+    id = fields.Integer(required=False)
     date = fields.Date(required=True)
     customer_id = fields.Integer(required=True)
-    products = fields.List(fields.Nested(ProductSchema))
+    product_id = fields.String(required=True)
 
 class AccountSchema(ma.Schema):
     id = fields.Integer(required=True)
@@ -65,10 +65,10 @@ class CustomerAccount(db.Model):
     password = db.Column(db.String(255), nullable = False)
     customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'))
 
-order_product = db.Table('Order_Product', 
-    db.Column('order_id', db.Integer, db.ForeignKey('Orders.id'), primary_key = True),
-    db.Column('product_id', db.Integer, db.ForeignKey('Products.id'), primary_key = True),
-    )
+# order_product = db.Table('Order_Product', 
+#     db.Column('order_id', db.Integer, db.ForeignKey('Orders.id'), primary_key = True),
+#     db.Column('product_id', db.Integer, db.ForeignKey('Products.id'), primary_key = True),
+#     )
 
 class Product(db.Model):
     __tablename__ = 'Products'
@@ -81,7 +81,7 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     date = db.Column(db.Date, nullable = False)
     customer_id = db.Column(db.Integer, db.ForeignKey('Customers.id'))
-    products = db.relationship('Product', secondary = order_product, backref=db.backref('orders'))
+    product_id = db.Column(db.String(255), nullable = False)
 
 
 # Routes
@@ -129,6 +129,7 @@ def update_customer(id):
 
 @app.route('/customers/<int:id>', methods=['DELETE'])
 def delete_customer(id):
+    print(id)
     customer = Customer.query.get_or_404(id)
     db.session.delete(customer)
     db.session.commit()
@@ -181,6 +182,7 @@ def delete_account(id):
 # Product Routes --------------------------------------------------
 
 @app.route('/products', methods=['GET'])
+@app.route('/products/', methods=['GET'])
 def get_all_products():
     products = Product.query.all()
     return products_schema.jsonify(products)
@@ -191,13 +193,14 @@ def get_product(id):
     return product_schema.jsonify(product)
 
 @app.route('/products', methods=['POST'])
+@app.route('/products/', methods=['POST'])
 def add_product():
     try:
         product_data = product_schema.load(request.json)
     except ValidationError as err:
         return jsonify(err.messages), 400
     
-    new_product = Product(id=product_data['id'], name=product_data['name'], price=product_data['price'])
+    new_product = Product(name=product_data['name'], price=product_data['price'])
     db.session.add(new_product)
     db.session.commit()
     return jsonify({"message": "New product added successfully"}), 201
@@ -210,7 +213,6 @@ def update_product(id):
     except ValidationError as err:
         return jsonify(err.messages), 400
     
-    product.id = product_data['id']
     product.name = product_data['name']
     product.price = product_data['price']
     db.session.commit()
@@ -225,6 +227,7 @@ def delete_product(id):
 
 #Order Routes ---------------------------------------------------------------
 @app.route('/orders', methods=['GET'])
+@app.route('/orders/', methods=['GET'])
 def get_all_orders():
     orders = Order.query.all()
     return orders_schema.jsonify(orders)
@@ -234,19 +237,41 @@ def get_order(id):
     order = Order.query.get_or_404(id)
     return order_schema.jsonify(order)
 
+# @app.route('/orders', methods=['POST'])
+# def add_order():
+#     try:
+#         order_data = order_schema.load(request.json)
+#     except ValidationError as err:
+#         return jsonify(err.messages), 400
+    
+#     new_order = Order(date = order_data['date'], customer_id = order_data['customer_id'])
+
+#     db.session.add(new_order)
+#     db.session.commit()
+#     return jsonify({"message": "New order created successfully"}), 
+
 @app.route('/orders', methods=['POST'])
+@app.route('/orders/', methods=['POST'])
 def add_order():
     try:
-        order_data = order_schema.load(request.json)
+        order_data = request.json
     except ValidationError as err:
         return jsonify(err.messages), 400
     
-    new_order = Order(date = order_data['date'], customer_id = order_data['customer_id']
-        )
+    product_ids = list(map(int, order_data['products'].split(',')))
+        
+    product_query = select(Product).where(Product.id.in_(product_ids))
+    product_result = db.session.execute(product_query).scalars().all()
+
+    new_order = Order(date = order_data['date'], customer_id = order_data['customer_id'])
+
+    new_order.product_id = ','.join(str(product.id) for product in product_result)
 
     db.session.add(new_order)
     db.session.commit()
     return jsonify({"message": "New order created successfully"}), 201
+
+
 
 @app.route('/orders/<int:id>', methods=['PUT'])
 def update_order(id):
